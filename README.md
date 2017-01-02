@@ -1,3 +1,138 @@
+[Xcode7 添加PCH文件](http://www.jianshu.com/p/e6e0e3bbbf38)
+
+1.)  打开你的Xcode工程. 在Supporting Files目录下,选择 File > New > File > iOS > Other > PCH File 然后点击下一步；
+
+2.) 假设你的项目名称为TestDemo, 你的PCH 文件的名字应该为 TestDemo-Prefix.pch,然后创建；
+
+3.) 选择 PCH 文件(文章的示例文件为 TestDemo-Prefix.pch) ,可以看到里面的内容如下:
+
+4.) 找到 Project > Build Settings > 搜索 “Prefix Header“；
+
+5.) “Apple LLVM 7.0 -Language″ 栏目中你将会看到 Prefix Header 关键字；
+
+6.) 输入: TestDemo/TestDemo-Prefix.pch (如 TestDemo/TestDemo-Prefix.pch )；
+
+7.)，将Precompile Prefix Header为YES，预编译后的pch文件会被缓存起来，可以提高编译速度。效果如下
+
+8.) Clean 并且 build 你的项目.
+
+就是这样！Done！现在你可以使用你的 PCH 文件就像你使用老版本的Xcode一样了
+
+文／默默desire（简书作者）
+原文链接：http://www.jianshu.com/p/e6e0e3bbbf38
+著作权归作者所有，转载请联系作者获得授权，并标注“简书作者”。
+
+
+[配置CocoaLumberjack的一些问题记录](https://my.oschina.net/ioslighter/blog/381201)
+颜色日志，由于需要 XCode 插件，而 XCode 8 已禁用插件，所以没有继续验证，其它配置参照调整，可用。
+
+
+
+想在Xcode中整一个彩色日志显示，按照GettingStarted.md 一文中的步骤将CocoaLumberjack 2.x整合进我的项目中来，遇到一些问题，当然不乏一些坑，作个记录。
+
+
+
+整合步骤：
+
+Drag CocoaLumberjack/Framework/{Desktop/Mobile}/Lumberjack.xcodeproj into your project
+
+In your App target Build Settings
+
+Add to 'User Header Search Paths' $(BUILD_ROOT)/../IntermediateBuildFilesPath/UninstalledProducts/include
+
+Set 'Always Search User Paths' to YES
+
+In your App target Build Phases
+
+Add CocoaLumberjack static library target to 'Target Dependencies'
+
+Add libCocoaLumberjack.a to 'Link Binary With Libraries'
+
+Include the framework in your source files with
+
+#import <CocoaLumberjack/CocoaLumberjack.h>
+
+
+1、首先是编译提示Use of undeclared identifier 'LOG_LEVEL_VERBOSE'问题
+
+这个我是按照文档XcodeTricks.md 在pch文件中加了下面的代码：
+
+#ifdef DEBUG
+  static const int ddLogLevel = LOG_LEVEL_VERBOSE;
+#else
+  static const int ddLogLevel = LOG_LEVEL_WARN;
+#endif
+踩坑1，把LOG_LEVEL_VERBOSE和LOG_LEVEL_WARN换成DDLogLevelVerbose和DDLogLevelError就好了。
+
+修改后的代码应该是：
+
+#ifdef DEBUG
+static const int ddLogLevel = DDLogLevelVerbose;
+#else
+static const int ddLogLevel = DDLogLevelError;
+#endif
+然后在方法application:didFinishLaunchingWithOptions:中添加以下代码设置颜色显示：
+
+[DDLog addLogger:[DDASLLogger sharedInstance]];
+[DDLog addLogger:[DDTTYLogger sharedInstance]];
+[[DDTTYLogger sharedInstance] setColorsEnabled:YES];
+测试颜色显示的代码：
+
+DDLogError(@"Paper jam");
+DDLogWarn(@"Toner is low");
+DDLogInfo(@"Warming up printer (pre-customization)");
+DDLogVerbose(@"Intializing protcol x26 (pre-customization)");
+
+
+2、彩色日志显示需要插件XcodeColors插件支持，这个插件我下载的是https://github.com/rvi/XcodeColors里面的，因为它支持了Xcode6.3。
+
+
+
+3、用CocoaLumberjack Demo里自带的TextXcodeColors工程测试，pod install后打开TextXcodeColors.xcodeproj，编译提示ld: library not found for -lPods-TXC_ios-CocoaLumberjack
+
+又是一个坑。一般来说，pod install后应该生成xcworkspace文件，但是没有生成TextXcodeColors.xcworkspace文件，我就奇怪了。后来才发现，应该是打开Demos.xcworkspace，然后在里面选择TextXcodeColors这个target，当然前提是先要进入TextXcodeColors文件夹执行pod install才行。尽量使用“pod install --verbose --no-repo-update”
+
+
+
+4、Demo里测试日志颜色正常，在自己的项目里就不会显示颜色
+
+坑3。奥秘在于要对Project的Scheme作了如下调整：
+
+    In Xcode bring up the Scheme Editor (Product -> Edit Scheme...)
+    Select "Run" (on the left), and then the "Arguments" tab
+    Add a new Environment Variable named "XcodeColors", with a value of "YES"
+
+
+
+5、内存暴涨问题
+
+加入CocoaLumberjack后，模拟器测试正常，真机测试内存暴涨，导致xcode自动终结联机调试，不调用DDLog相关的代码就没有问题。最终缩小范围，发现把上面的第4步中的Environment Variable给删掉就没有问题，我真是晕了。
+
+而另一个位置的同名项目，我测试是没有这个问题，真是奇哉怪也。
+
+实在是没有办法，把DerivedData里的所有app文件夹全部删掉，再重新运行，就没有问题了。猜测是因为同名项目的缘故？
+
+
+
+6、使用静态库
+
+本来解决了上面的问题后使用CocoaLumberjack基本就没什么问题了，可是不幸又被我发现了一个问题，那就是当我要修改app图标和启动图片的时候，即在General--App Icons and Launch Images中点向右箭头时，进入的却是项目Lumberjack.xcodeproj的启动图片设置界面。这说明嵌入Lumberjack.xcodeproj后App Icons and Launch Images混乱了。
+
+于是我想到了使用静态库，在网上找到一个现成的CocoaLumberjack静态库工程，链接是https://github.com/NachoMan/CocoaLumberjack-Static。下载后先执行﻿﻿git submodule update --init --recursive命令更新CocoaLumberjack库，再执行build.sh脚本即可生成一个zip包，里面包含了.a文件和头文件，复制到自己的工程中添加就行了。
+
+可以用lipo -info xxxxx.a命令来检查生成的.a文件的CPU架构。
+
+参考：
+iOS开源项目之日志框架CocoaLumberjack 
+利用 CocoaLumberjack 搭建自己的 Log 系统
+
+Colorful XCode Console 
+
+
+
+
+
+
 <p align="center" >
   <img src="LumberjackLogo.png" title="Lumberjack logo" float=left>
 </p>
